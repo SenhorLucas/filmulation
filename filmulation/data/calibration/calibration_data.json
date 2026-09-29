@@ -16,15 +16,15 @@
         },
         "kodak_2383_uc": {
             "norm": {
-                "dir_coupler": 1.0,
-                "green_offset": 0.007,
-                "print_exposure": 1.2,
-                "print_gamma": 0.9
+                "dir_coupler": 0.0,
+                "green_offset": 0.0,
+                "print_exposure": 1.0,
+                "print_gamma": 1.0
             },
             "unorm": {
                 "dir_coupler": 1.0,
-                "green_offset": 0.007,
-                "print_exposure": 1.08,
+                "green_offset": 0.0,
+                "print_exposure": 1.2,
                 "print_gamma": 1.0
             }
         },
@@ -596,15 +596,15 @@
         },
         "kodak_vision3_250d_uc": {
             "ratio_rgb": [
-                1.8,
-                0.8,
-                0.1
+                1.0,
+                1.0,
+                1.0
             ],
             "unorm": {
                 "kodak_2383_uc": {
-                    "m_filter_shift": 4.4,
-                    "y_filter_shift": 0.2,
-                    "dir_coupler": 1.5
+                    "m_filter_shift": 5.0,
+                    "y_filter_shift": 0.1,
+                    "dir_coupler": 0.0
                 },
                 "kodak_endura_premier_uc": {
                     "m_filter_shift": 2.0,

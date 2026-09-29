@@ -128,7 +128,7 @@ class FilmSim():
             self.negative.glare.active = False
             self.print_paper.glare.active = False
 
-    def process(self, image):
+    def process(self, image, report=False):
         image = np.double(np.array(image)[:,:,0:3])
 
         # apply profiles changes (idempotent; needed before the print/scan stages)
@@ -160,6 +160,11 @@ class FilmSim():
         log_raw = np.log10(np.fmax(raw, 0.0) + 1e-10)
         density_cmy = self._develop_film(log_raw, pixel_size_um)
         if self.debug.return_negative_density_cmy: return density_cmy
+
+        if report:
+            print("Negative side")
+            print(f"{log_raw=}")
+            print(f"{density_cmy=}")
 
         # print exposure with enlarger
         if not self.io.compute_negative:
@@ -250,7 +255,7 @@ class FilmSim():
     @timeit('_scan')
     def _scan(self, density_cmy):
         rgb = self._density_cmy_to_rgb(density_cmy, use_lut=self.settings.use_scanner_lut)
-        rgb = self._apply_blur_and_unsharp(rgb)
+        # rgb = self._apply_blur_and_unsharp(rgb)
         rgb = self._apply_cctf_encoding_and_clip(rgb)
         return rgb
 

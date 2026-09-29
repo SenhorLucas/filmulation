@@ -10,7 +10,7 @@ setup(name='filmulation',
       zip_safe=False,
       entry_points={
           'console_scripts': [
-              'filumation = filmulation.gui.main:main',
+              'filmulation = filmulation.gui.main:main',
               'filmulation-lut = filmulation.cli:run'
           ]
       },

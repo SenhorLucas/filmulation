@@ -180,6 +180,10 @@ class Film(Filmulation):
         self.halation = profile.halation
         self.dir_couplers = profile.dir_couplers
         self.density_midscale_neutral = profile.info.density_midscale_neutral
+        # print(f'{self.grain=}')
+        # print(f'{self.halation=}')
+        # print(f'{self.dir_couplers=}')
+        # print(f'{self.density_midscale_neutral=}')
 
     def develop(self, log_raw, pixel_size_um,
                 bypass_grain=False,

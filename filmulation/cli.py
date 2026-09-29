@@ -1,6 +1,5 @@
 from filmulation.model.stocks import Illuminants
 from filmulation.model.process import generate_lut, photo_params, write_cube, FilmSim
-from filmulation.calibration_data import negative_calib, positive_defaults
 from collections.abc import MutableMapping
 import copy
 import importlib.resources as pkg_resources
@@ -110,6 +109,7 @@ def make_params(
     normalize=False,
     lut=True,
     positive_only=False,
+    negative_only=False,
     wb_to_base=True,
     print_exposure=None,
     print_gamma=None,
@@ -122,7 +122,7 @@ def make_params(
     params = photo_params(negative=negative, print_paper=positive)
 
     params.camera.auto_exposure = False
-    params.camera.exposure_compensation_ev = 0.15
+    params.camera.exposure_compensation_ev = 0.0
 
     params.debug.deactivate_spatial_effects = True
     params.debug.deactivate_stochastic_effects = True
@@ -138,7 +138,7 @@ def make_params(
     params.enlarger.print_exposure_compensation = False
     params.enlarger.print_illuminant = Illuminants.lamp
 
-    params.io.compute_negative = False
+    params.io.compute_negative = negative_only
     params.io.compute_positive_only = positive_only
     params.io.full_image = False
     params.io.input_cctf_decoding = True
@@ -411,13 +411,45 @@ def generate_middle_grey_sample(params, normalize=True):
     out = photo.process(rgb)[0, 0, :3]
     return tuple(float(v) for v in out)
 
+
+def add_common(parser):
+    parser.add_argument('--norm', choices=['norm', 'unorm', 'both'], default='unorm',
+                         help='Normalization mode (default: unorm)')
+    parser.add_argument('--color-space', choices=COLOR_SPACES, default='dwg', metavar='CS',
+                         help=f'Input/output color space. Available: {stock_list(COLOR_SPACES)} (default: dwg)')
+    parser.add_argument('--size', type=int, choices=[17, 32, 33, 65], default=32,
+                         help='LUT grid size (default: 32)')
+    parser.add_argument('--positive-only', action='store_true',
+                         help='Bake only the print (positive) stage: maps scanned-negative RGB '
+                              '-> positive RGB, to invert DSLR negative scans. Forces --norm unorm.')
+    parser.add_argument('--negative-only', action='store_true')
+    parser.add_argument('--no-wb-to-base', dest='wb_to_base', action='store_false',
+                         help='Positive-only: disable base-anchored white balance (assumes the '
+                              'scan is NOT WB-balanced to the film base). Falls back to the legacy '
+                              'gray-world balance. Default: base-anchored.')
+    parser.set_defaults(wb_to_base=True)
+    # Print-balance overrides for experimentation. When set, override the values
+    # pulled from calibration_data.json; the values are recorded in the .cube
+    # header and filename so swept LUTs are distinguishable.
+    parser.add_argument('--print-exposure', type=float, default=None,
+                         help='Override baked print exposure (default: from calibration).')
+    parser.add_argument('--print-gamma', type=float, default=None,
+                         help='Override baked print gamma factor (default: from calibration).')
+    parser.add_argument('--y-shift', type=float, default=None,
+                         help='Override enlarger yellow filter shift (blue/green balance).')
+    parser.add_argument('--m-shift', type=float, default=None,
+                         help='Override enlarger magenta filter shift (green/red balance).')
+
+
+def stock_list(d):
+    return ', '.join(d)
+
+
 def run():
     import argparse
 
     calib_path = Path(str(pkg_resources.files('filmulation.data.calibration').joinpath('calibration_data.json')))
     read_calibration_data(calib_path)
-
-    stock_list = lambda d: ', '.join(d)
 
     # Shared stock-selection args, inherited by both subcommands via parents=
     stock_parser = argparse.ArgumentParser(add_help=False)
@@ -430,7 +462,7 @@ def run():
     stock_parser.add_argument('--all', action='store_true',
                               help='Expand unspecified -n/-p to all available stocks')
 
-    parser = argparse.ArgumentParser(prog='agx-lut', description='filmulation LUT generator')
+    parser = argparse.ArgumentParser(prog='filmulation-lut', description='filmulation LUT generator')
     parser.add_argument('--dest', type=Path, default=Path(MAC_PATH),
                         help='Output directory for LUT files (default: MAC_PATH)')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -438,37 +470,17 @@ def run():
                           help='Calibrate printer parameters and write back to calibration_data.json')
     sub_gen = subparsers.add_parser('generate', parents=[stock_parser],
                                     help='Generate .cube LUT files')
-    sub_gen.add_argument('--norm', choices=['norm', 'unorm', 'both'], default='unorm',
-                         help='Normalization mode (default: unorm)')
-    sub_gen.add_argument('--color-space', choices=COLOR_SPACES, default='dwg', metavar='CS',
-                         help=f'Input/output color space. Available: {stock_list(COLOR_SPACES)} (default: dwg)')
-    sub_gen.add_argument('--size', type=int, choices=[17, 32, 33, 65], default=32,
-                         help='LUT grid size (default: 32)')
-    sub_gen.add_argument('--positive-only', action='store_true',
-                         help='Bake only the print (positive) stage: maps scanned-negative RGB '
-                              '-> positive RGB, to invert DSLR negative scans. Forces --norm unorm.')
-    sub_gen.add_argument('--no-wb-to-base', dest='wb_to_base', action='store_false',
-                         help='Positive-only: disable base-anchored white balance (assumes the '
-                              'scan is NOT WB-balanced to the film base). Falls back to the legacy '
-                              'gray-world balance. Default: base-anchored.')
-    sub_gen.set_defaults(wb_to_base=True)
-    # Print-balance overrides for experimentation. When set, override the values
-    # pulled from calibration_data.json; the values are recorded in the .cube
-    # header and filename so swept LUTs are distinguishable.
-    sub_gen.add_argument('--print-exposure', type=float, default=None,
-                         help='Override baked print exposure (default: from calibration).')
-    sub_gen.add_argument('--print-gamma', type=float, default=None,
-                         help='Override baked print gamma factor (default: from calibration).')
-    sub_gen.add_argument('--y-shift', type=float, default=None,
-                         help='Override enlarger yellow filter shift (blue/green balance).')
-    sub_gen.add_argument('--m-shift', type=float, default=None,
-                         help='Override enlarger magenta filter shift (green/red balance).')
+    add_common(sub_gen)
+
+    sub_pixel = subparsers.add_parser('pixel', parents=[stock_parser])
+    add_common(sub_pixel)
+    sub_pixel.add_argument('pixels', help='Pixels in `eval`able format')
     args = parser.parse_args()
 
     negatives = [NEGATIVES[n] for n in (args.negative or (list(NEGATIVES) if args.all else ['fc2']))]
     positives = [POSITIVES[p] for p in (args.positive or (list(POSITIVES) if args.all else ['fca']))]
 
-    in_color_space = COLOR_SPACES.get(getattr(args, 'color_space', None), 'DaVinci Wide Gamut')
+    in_color_space = COLOR_SPACES.get(getattr(args, 'color_space', ''), 'DaVinci Wide Gamut')
     out_color_space = in_color_space
 
     if args.command == 'calibrate':
@@ -479,7 +491,7 @@ def run():
         # pprint(get_calibration_data())
         write_calibration_data(calib_path)
 
-    elif args.command == 'generate':
+    elif args.command == 'generate' or args.command == 'pixel':
         # A positive-only LUT's input axis is scanned-negative RGB, so the
         # black/white-corner normalization in generate_3d_lut is meaningless
         # there; always bake it unnormalized.
@@ -497,6 +509,7 @@ def run():
                 out_color_space=out_color_space,
                 normalize=normalize,
                 positive_only=args.positive_only,
+                negative_only=args.negative_only,
                 wb_to_base=args.wb_to_base,
                 print_exposure=args.print_exposure,
                 print_gamma=args.print_gamma,
@@ -506,51 +519,62 @@ def run():
             params.negative.dir_couplers.active = True
             params.negative.dir_couplers.diffusion_size_um = 0
 
-            lut3d = generate_lut(
-                params,
-                size=args.size,
-                normalize=normalize,
-            )
+            if args.command == 'pixel':
+                params = copy.deepcopy(params)
+                photo = FilmSim(params)
+                input_pixels = np.array(eval(args.pixels), dtype=np.float64)
+                if len(input_pixels.shape) == 1:
+                    input_pixels = input_pixels[:, None].repeat(3, axis=1)
+                out = photo.process(input_pixels, report=True)
+                print(f"{out}")
 
-            # Tag the filename with any print-balance overrides so swept LUTs
-            # don't collide and are self-identifying.
-            override_tag = "".join(
-                f"-{k}{v:g}" for k, v in (
-                    ("pe", args.print_exposure), ("pg", args.print_gamma),
-                    ("y", args.y_shift), ("m", args.m_shift),
-                ) if v is not None
-            )
-            filename = generate_lut_path(
-                negative, positive, normalize, in_color_space,
-                folder=f"sim-results/{in_color_space}",
-                dest=args.dest,
-                positive_only=args.positive_only,
-                tag=override_tag,
-            )
 
-            neg_name = NEG_DISPLAY.get(negative, negative)
-            pos_name = POS_DISPLAY.get(positive, positive)
-            ratio_rgb = params.negative.dir_couplers.ratio_rgb
-            metadata = {
-                'generator':              'filmulation',
-                'negative_key':           negative,
-                'positive_key':           positive,
-                'negative_name':          neg_name,
-                'positive_name':          pos_name,
-                'input_color_space':      in_color_space,
-                'output_color_space':     out_color_space,
-                'normalize':              'norm' if normalize else 'unorm',
-                'positive_only':          args.positive_only,
-                'wb_to_base':             args.wb_to_base if args.positive_only else False,
-                'lut_size':               args.size,
-                'dir_couplers_amount':    params.negative.dir_couplers.amount,
-                'dir_couplers_ratio_rgb': ', '.join(str(v) for v in ratio_rgb),
-                'm_filter_shift':         params.enlarger.m_filter_shift,
-                'y_filter_shift':         params.enlarger.y_filter_shift,
-                'print_exposure':         params.enlarger.print_exposure,
-                'print_gamma':            params.print_paper.data.tune.gamma_factor,
-            }
-            write_cube(filename, lut3d, title=f"{neg_name} - {pos_name}", metadata=metadata)
+            if args.command == 'generate':
+                lut3d = generate_lut(
+                    params,
+                    size=args.size,
+                    normalize=normalize,
+                )
+
+                # Tag the filename with any print-balance overrides so swept LUTs
+                # don't collide and are self-identifying.
+                override_tag = "".join(
+                    f"-{k}{v:g}" for k, v in (
+                        ("pe", args.print_exposure), ("pg", args.print_gamma),
+                        ("y", args.y_shift), ("m", args.m_shift),
+                    ) if v is not None
+                )
+                filename = generate_lut_path(
+                    negative, positive, normalize, in_color_space,
+                    folder=f"sim-results/{in_color_space}",
+                    dest=args.dest,
+                    positive_only=args.positive_only,
+                    tag=override_tag,
+                )
+
+                neg_name = NEG_DISPLAY.get(negative, negative)
+                pos_name = POS_DISPLAY.get(positive, positive)
+                ratio_rgb = params.negative.dir_couplers.ratio_rgb
+                metadata = {
+                    'generator':              'filmulation',
+                    'negative_key':           negative,
+                    'positive_key':           positive,
+                    'negative_name':          neg_name,
+                    'positive_name':          pos_name,
+                    'input_color_space':      in_color_space,
+                    'output_color_space':     out_color_space,
+                    'normalize':              'norm' if normalize else 'unorm',
+                    'positive_only':          args.positive_only,
+                    'wb_to_base':             args.wb_to_base if args.positive_only else False,
+                    'lut_size':               args.size,
+                    'dir_couplers_amount':    params.negative.dir_couplers.amount,
+                    'dir_couplers_ratio_rgb': ', '.join(str(v) for v in ratio_rgb),
+                    'm_filter_shift':         params.enlarger.m_filter_shift,
+                    'y_filter_shift':         params.enlarger.y_filter_shift,
+                    'print_exposure':         params.enlarger.print_exposure,
+                    'print_gamma':            params.print_paper.data.tune.gamma_factor,
+                }
+                write_cube(filename, lut3d, title=f"{neg_name} - {pos_name}", metadata=metadata)
 
 if __name__ == '__main__':
     run()

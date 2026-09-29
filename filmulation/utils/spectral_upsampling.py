@@ -80,7 +80,7 @@ def compute_spectra_from_coeffs(coeffs, smooth_steps=1):
     y = 1.0 / np.sqrt(x * x + 1.0)
     spectra = 0.5 * x * y +  0.5
     spectra /= coeffs[...,3][...,None]
-    
+
     # gaussian smooth with smooth_step*sigmas and downsample
     step = np.mean(np.diff(wl))
     spectra = scipy.ndimage.gaussian_filter(spectra, step*smooth_steps, axes=-1)
@@ -119,7 +119,7 @@ def rgb_to_tc_b(rgb, color_space='ITU-R BT.2020', apply_cctf_decoding=False, ref
     # target_cs.whitepoint = ILLUMINANTS['CIE 1931 2 Degree Standard Observer']['D65']
     # adapted_rgb = colour.RGB_to_RGB(rgb, input_colourspace=source_cs,
     #                                 output_colourspace=target_cs,
-    #                                 adaptation_transform='Bradford')    
+    #                                 adaptation_transform='Bradford')
     # illu_xy = colour.CCS_ILLUMINANTS['CIE 1931 2 Degree Standard Observer'][reference_illuminant]
     illu_xy = illuminant_to_xy(reference_illuminant)
     xyz = colour.RGB_to_XYZ(rgb, colourspace=color_space,
@@ -142,14 +142,14 @@ def compute_band_pass_filter(filter_uv=[1, 410, 8], filter_ir=[1, 675, 15]):
     amp_uv = filter_uv[0]
     wl_uv = filter_uv[1]
     width_uv = filter_uv[2]
-    
+
     amp_ir = filter_ir[0]
     wl_ir = filter_ir[1]
     width_ir = filter_ir[2]
-    
+
     amp_uv = np.clip(amp_uv, 0, 1)
     amp_ir = np.clip(amp_ir, 0, 1)
-    
+
     wl = SPECTRAL_SHAPE.wavelengths
     filter_uv  = 1-amp_uv + amp_uv*sigmoid_erf(wl, wl_uv, width=width_uv)
     filter_ir  = 1-amp_ir + amp_ir*sigmoid_erf(wl, wl_ir, width=-width_ir)
@@ -193,7 +193,7 @@ def rgb_to_raw_mallett2019(RGB, sensitivity,
     raw  = contract('ijk,lk,lm->ijm', lrgb, basis_set_with_illuminant, sensitivity)
     raw = np.nan_to_num(raw)
     raw = np.ascontiguousarray(raw)
-    
+
     raw_midgray  = np.einsum('k,km->m', illuminant*0.184, sensitivity) # use 0.184 as midgray reference
     return raw / raw_midgray[1] # normalize with green channel
 
@@ -212,12 +212,12 @@ def rgb_to_raw_hanatos2025(rgb, sensitivity,
         raw = np.einsum('l,lm->m', spectrum, sensitivity)
         raw = np.array([[raw]])
     else:
-        tc_raw, b = rgb_to_tc_b(rgb, color_space=color_space, apply_cctf_decoding=apply_cctf_decoding, 
+        tc_raw, b = rgb_to_tc_b(rgb, color_space=color_space, apply_cctf_decoding=apply_cctf_decoding,
                                 reference_illuminant=reference_illuminant)
         tc_lut  = contract('ijl,lm->ijm', HANATOS2025_SPECTRA_LUT, sensitivity)
         raw = apply_lut_cubic_2d(tc_lut, tc_raw)
         raw *= b[...,None] # scale the raw back with the scale factor
-    
+
     midgray_rgb = np.array([[[0.184]*3]])
     illuminant_midgray = rgb_to_spectrum(midgray_rgb, color_space=color_space, apply_cctf_decoding=False, reference_illuminant=reference_illuminant)
     raw_midgray  = np.einsum('k,km->m', illuminant_midgray, sensitivity) # use 0.184 as midgray reference
@@ -240,4 +240,3 @@ if __name__=='__main__':
     coeffs = fetch_coeffs(np.array([[1,1]]) ,lut_coeffs)
     spectra = compute_spectra_from_coeffs(coeffs)
     lut_spectra = compute_lut_spectra(lut_size=128)
-    
